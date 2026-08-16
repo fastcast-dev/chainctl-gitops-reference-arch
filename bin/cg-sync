@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Thin vendor-neutral entrypoint: works from GitHub Actions, Bitbucket
+# Pipelines, Jenkins, cron, or a workstation. All logic lives in Python.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+PYTHON="${PYTHON:-python3}"
+command -v "$PYTHON" >/dev/null || { echo "error: python3 not found" >&2; exit 1; }
+command -v "${CHAINCTL_BIN:-chainctl}" >/dev/null || {
+  echo "error: chainctl not found — https://edu.chainguard.dev/chainguard/chainctl-usage/how-to-install-chainctl/" >&2
+  exit 1
+}
+
+cd "$REPO_ROOT"
+exec "$PYTHON" scripts/chainguard_sync.py "$@"

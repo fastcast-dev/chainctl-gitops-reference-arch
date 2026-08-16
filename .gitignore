@@ -1,0 +1,5 @@
+# Rendered Custom Assembly configs are build artifacts, not source of truth.
+rendered/
+__pycache__/
+*.pyc
+.venv/

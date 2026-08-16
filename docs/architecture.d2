@@ -1,0 +1,64 @@
+# How the chainctl GitOps workflow fits together.
+# Render: d2 docs/architecture.d2 docs/architecture.svg  (or: make diagram)
+
+direction: down
+
+team: Team {
+  shape: person
+}
+
+repo: Git repository {
+  config: config/ (source of truth) {
+    tier0: "org.yaml\ntier 0 — org + ticket policy"
+    tier1: "images.yaml\ntier 1 — enabled images"
+    tier2: "global.yaml\ntier 2 — certs, APK endpoints"
+    tier3: "images/<name>.yaml\ntier 3 — per-image overlays"
+  }
+  certs: "certs/*.pem\ninternal CA bundle"
+}
+
+team -> repo: "PR (must cite a\nSNOW/JIRA/GitHub ticket)"
+
+validate: "CI: validate (every PR)" {
+  lint: "lint\nschema + ticket + cert checks\n(offline)"
+  plan: "plan\nchainctl --dry-run vs live org\n(read-only viewer identity)"
+  lint -> plan
+}
+
+repo -> validate: on pull_request
+
+comment: "plan posted as\nPR comment" {
+  shape: page
+}
+validate.plan -> comment
+
+approvers: "CODEOWNERS review\nChainguard org admins + security" {
+  shape: diamond
+}
+comment -> approvers
+approvers -> repo: "approve + merge to main\n(PR approval IS the change approval)"
+
+apply: "CI: apply (merge to main)" {
+  auth: "OIDC -> chainctl\nassumable identity"
+  p1: "phase 1\nchainctl images repos create\n(one repo per tier-1 entry)"
+  p2: "phase 2\nchainctl images repos build apply\n(tier 3 merged over tier 2 -> rendered/)"
+  auth -> p1 -> p2
+}
+
+repo -> apply: on push to main
+
+org: "Chainguard org\ncgr.dev/<org>" {
+  shape: cylinder
+}
+
+apply.p2 -> org: "custom images with certs,\nAPK endpoints, ticket annotations"
+
+drift: "nightly cron\ncg-sync plan" {
+  style.stroke-dash: 3
+}
+drift -> org: "compare live state\nto git" {
+  style.stroke-dash: 3
+}
+drift -> team: "exit 2 -> job fails\n(drift: Console edits detected)" {
+  style.stroke-dash: 3
+}

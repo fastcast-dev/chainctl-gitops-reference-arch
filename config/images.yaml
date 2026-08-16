@@ -1,0 +1,23 @@
+# Tier 1 — the org's approved image catalog (sweep/phase 1).
+# Each entry becomes `chainctl images repos create <name> --parent <org>`.
+#
+# Governance: adding an image REQUIRES a ticket reference. PRs touching this
+# file must be approved by Chainguard org owners/admins (see CODEOWNERS).
+#
+# Entries may be a bare string (lint fails if tickets are required) or a map:
+#   - name: nginx            # repo name in cgr.dev/<org>/<name>
+#     ticket: JIRA-1234      # SNOW/JIRA/GitHub issue that approved it
+#     description: ""        # optional, max 255 chars
+#     source: ""             # optional catalog repository ID to sync from
+
+images-enabled:
+  - name: nginx
+    ticket: JIRA-1234
+    description: "Edge proxy — platform team"
+
+  - name: tomcat
+    ticket: CHG0031337
+
+  - name: jdk
+    ticket: https://github.com/acme/platform/issues/42
+    description: "Java base for all JVM services"

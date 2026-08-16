@@ -1,0 +1,15 @@
+# Governance gate: config changes require approval from Chainguard org
+# owners/admins. Replace with your real teams.
+
+# Adding/removing images from the org catalog and org-wide certs/APK endpoints
+/config/org.yaml        @acme/chainguard-admins
+/config/images.yaml     @acme/chainguard-admins
+/config/global.yaml     @acme/chainguard-admins @acme/platform-security
+/certs/                 @acme/platform-security
+
+# Per-image customizations: platform team can approve, security notified
+/config/images/         @acme/chainguard-admins
+
+# Changes to the tool itself
+/scripts/               @acme/chainguard-admins
+/bin/                   @acme/chainguard-admins

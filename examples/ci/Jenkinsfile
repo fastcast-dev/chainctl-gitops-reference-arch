@@ -1,0 +1,59 @@
+// Jenkins adapter. Jenkins usually lacks a native OIDC issuer, so the
+// pragmatic options are:
+//   a) OIDC via a plugin (e.g. "OpenID Connect Provider") + assumable identity
+//   b) run `chainctl auth login --headless` once on the agent and rely on the
+//      refresh token (workstation-style), or
+//   c) a static identity token file injected as a Jenkins credential.
+// This example uses (c): a secret-file credential holding an OIDC token that
+// your IdP issues to the Jenkins service account.
+
+pipeline {
+  agent any
+
+  options { disableConcurrentBuilds() } // one apply against the org at a time
+
+  environment {
+    CHAINGUARD_IDENTITY = credentials('chainguard-identity-uidp') // secret text
+  }
+
+  stages {
+    stage('Deps') {
+      steps {
+        sh '''
+          python3 -m pip install --user -q -r requirements.txt
+          command -v chainctl >/dev/null || {
+            VERSION=$(curl -sS https://dl.enforce.dev/chainctl/latest/metadata.json | jq -r .version)
+            curl -so "$HOME/bin/chainctl" "https://dl.enforce.dev/chainctl/${VERSION}/chainctl_linux_x86_64"
+            chmod +x "$HOME/bin/chainctl"
+          }
+        '''
+      }
+    }
+    stage('Lint') {
+      steps { sh './bin/cg-sync lint' }
+    }
+    stage('Auth') {
+      steps {
+        withCredentials([file(credentialsId: 'chainguard-oidc-token', variable: 'OIDC_TOKEN_FILE')]) {
+          sh 'chainctl auth login --identity "$CHAINGUARD_IDENTITY" --identity-token "$OIDC_TOKEN_FILE"'
+        }
+      }
+    }
+    stage('Plan') {
+      steps {
+        // exit 2 = changes pending; only 1 is a real failure
+        sh './bin/cg-sync plan --output text || [ $? -eq 2 ]'
+      }
+    }
+    stage('Apply') {
+      when { branch 'main' }
+      steps {
+        input message: 'Apply Chainguard image changes?', submitter: 'chainguard-admins'
+        sh './bin/cg-sync apply --output text'
+      }
+    }
+  }
+  post {
+    always { archiveArtifacts artifacts: 'rendered/**', allowEmptyArchive: true }
+  }
+}

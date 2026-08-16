@@ -1,0 +1,59 @@
+# PR gate: lint always; plan (read-only dry-run against the live org) when an
+# assumable identity is configured. Posts the plan as a PR comment so
+# approvers see exactly what merging will change.
+name: validate
+
+on:
+  pull_request:
+    paths: ["config/**", "certs/**", "scripts/**", "bin/**"]
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for chainctl assumable identity
+  pull-requests: write # plan comment
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: ./bin/cg-sync lint
+
+  plan:
+    # Set the CHAINGUARD_IDENTITY repo/org variable to the UIDP of an
+    # assumable identity that trusts this repo's OIDC claims (viewer role
+    # is enough for plan). See README "Identity setup".
+    if: vars.CHAINGUARD_IDENTITY != ''
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - uses: chainguard-dev/setup-chainctl@main
+        with:
+          identity: ${{ vars.CHAINGUARD_IDENTITY }}
+      - name: plan
+        id: plan
+        run: |
+          set +e
+          ./bin/cg-sync plan --output markdown | tee plan.md
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # 0 = in sync, 2 = changes pending (expected on a PR), 1 = error
+          [ "$rc" = "1" ] && exit 1 || exit 0
+      - name: comment plan on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file plan.md --edit-last --create-if-none
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-configs
+          path: rendered/
+          if-no-files-found: ignore

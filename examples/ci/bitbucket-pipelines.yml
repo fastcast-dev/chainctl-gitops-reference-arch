@@ -1,0 +1,46 @@
+# Bitbucket Pipelines adapter. Same tool, different auth plumbing:
+# Bitbucket exposes an OIDC token via BITBUCKET_STEP_OIDC_TOKEN when
+# `oidc: true` is set on a step. Create a Chainguard assumable identity
+# whose issuer is https://api.bitbucket.org/2.0/workspaces/<ws>/pipelines-config/identity/oidc
+# and set CHAINGUARD_IDENTITY as a repository variable.
+
+image: python:3.12-slim
+
+definitions:
+  scripts:
+    - script: &install-chainctl |
+        apt-get update -qq && apt-get install -y -qq curl jq >/dev/null
+        VERSION=$(curl -sS "https://dl.enforce.dev/chainctl/latest/metadata.json" | jq -r .version)
+        curl -so /usr/local/bin/chainctl "https://dl.enforce.dev/chainctl/${VERSION}/chainctl_linux_x86_64"
+        chmod +x /usr/local/bin/chainctl
+        pip install -q -r requirements.txt
+    - script: &chainctl-login |
+        echo "$BITBUCKET_STEP_OIDC_TOKEN" > /tmp/oidc-token
+        chainctl auth login --identity "$CHAINGUARD_IDENTITY" --identity-token /tmp/oidc-token
+
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: lint + plan
+          oidc: true
+          script:
+            - *install-chainctl
+            - ./bin/cg-sync lint
+            - *chainctl-login
+            # exit 2 = changes pending — expected on a PR, don't fail
+            - ./bin/cg-sync plan --output markdown | tee plan.md || [ $? -eq 2 ]
+          artifacts:
+            - plan.md
+            - rendered/**
+  branches:
+    main:
+      - step:
+          name: apply
+          oidc: true
+          script:
+            - *install-chainctl
+            - *chainctl-login
+            - ./bin/cg-sync apply --output markdown
+          artifacts:
+            - rendered/**
