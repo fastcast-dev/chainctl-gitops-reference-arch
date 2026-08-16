@@ -1,23 +1,35 @@
 # PR gate: lint always; plan (read-only dry-run against the live org) when an
 # assumable identity is configured. Posts the plan as a PR comment so
 # approvers see exactly what merging will change.
+#
+# Hardening: all actions are Chainguard Actions hardened mirrors (or
+# SHA-pinned first-party), permissions are deny-by-default and granted
+# per job, and untrusted checkout credentials are not persisted.
 name: validate
 
 on:
   pull_request:
     paths: ["config/**", "certs/**", "scripts/**", "bin/**"]
 
-permissions:
-  contents: read
-  id-token: write # OIDC token for chainctl assumable identity
-  pull-requests: write # plan comment
+# Deny-by-default; each job requests only what it needs.
+permissions: {}
+
+# One validate run per PR; a new push supersedes the stale plan.
+concurrency:
+  group: validate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: chainguard-actions/actions-checkout@ec419da8013e66e059571719dbfa6d1483438668 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: chainguard-actions/actions-setup-python@8d5905a217cbe3d8720cc9c84de004f936e8ed82 # v7.0.0
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
@@ -30,13 +42,20 @@ jobs:
     if: vars.CHAINGUARD_IDENTITY != ''
     needs: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # OIDC token for chainctl assumable identity
+      pull-requests: write # plan comment
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: chainguard-actions/actions-checkout@ec419da8013e66e059571719dbfa6d1483438668 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: chainguard-actions/actions-setup-python@8d5905a217cbe3d8720cc9c84de004f936e8ed82 # v7.0.0
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - uses: chainguard-dev/setup-chainctl@main
+      - uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
         with:
           identity: ${{ vars.CHAINGUARD_IDENTITY }}
       - name: plan
@@ -51,8 +70,9 @@ jobs:
       - name: comment plan on PR
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file plan.md --edit-last --create-if-none
-      - uses: actions/upload-artifact@v4
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$PR_NUMBER" --body-file plan.md --edit-last --create-if-none
+      - uses: chainguard-actions/actions-upload-artifact@ef35e1b5b67dfd2cab54a24b06e94357a0e3acb3 # v7.0.1
         with:
           name: rendered-configs
           path: rendered/

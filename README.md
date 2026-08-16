@@ -66,6 +66,16 @@ and a Chainguard organization you can administer.
    merge to `main` plus a nightly drift check. Update `.github/CODEOWNERS`
    with your real reviewer teams. Non-GitHub runners live in `examples/ci/`.
 
+   The workflows are hardened: deny-by-default `permissions`, SHA-pinned
+   actions, and [Chainguard Actions](https://edu.chainguard.dev/chainguard/actions/overview/)
+   hardened mirrors (`chainguard-actions/*`) in place of upstream
+   `actions/*`. Chainguard Actions is in beta and gated by an entitlement —
+   enable it once per Chainguard org:
+
+   ```sh
+   chainctl actions entitlements create --parent <org>
+   ```
+
 7. **Make your first change** via PR: add an image to `config/images.yaml`
    with a `ticket:`, watch the plan comment appear, approve, merge — the
    repo shows up at `cgr.dev/<org>/<image>`.

@@ -1,5 +1,11 @@
 # Apply on merge to main (the PR approval IS the change approval), plus
 # manual dispatch for re-runs and a nightly drift-detection schedule.
+#
+# Hardening: all actions are Chainguard Actions hardened mirrors (or
+# SHA-pinned first-party), permissions are deny-by-default and granted
+# per job, checkout credentials are not persisted, and workflow_dispatch
+# input reaches the shell only via an environment variable (never inline
+# ${{ }} interpolation, which is an injection vector).
 name: apply
 
 on:
@@ -14,9 +20,8 @@ on:
   schedule:
     - cron: "17 6 * * *" # nightly drift check
 
-permissions:
-  contents: read
-  id-token: write
+# Deny-by-default; the job requests only what it needs.
+permissions: {}
 
 concurrency:
   group: chainguard-apply # never run two applies against the org at once
@@ -25,13 +30,19 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # OIDC token for chainctl assumable identity
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: chainguard-actions/actions-checkout@ec419da8013e66e059571719dbfa6d1483438668 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: chainguard-actions/actions-setup-python@8d5905a217cbe3d8720cc9c84de004f936e8ed82 # v7.0.0
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - uses: chainguard-dev/setup-chainctl@main
+      - uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
         with:
           # Identity needs repo.create / repo.update / manifest.create
           identity: ${{ vars.CHAINGUARD_IDENTITY }}
@@ -42,11 +53,14 @@ jobs:
           # exit 2 (drift) fails the nightly job so it pages/notifies
       - name: apply
         if: github.event_name != 'schedule'
+        env:
+          # Untrusted dispatch input: pass via env, expand in-shell only.
+          ONLY_IMAGE: ${{ inputs.only }}
         run: |
           ONLY_FLAG=""
-          [ -n "${{ inputs.only }}" ] && ONLY_FLAG="--only ${{ inputs.only }}"
+          [ -n "$ONLY_IMAGE" ] && ONLY_FLAG="--only $ONLY_IMAGE"
           ./bin/cg-sync apply --output markdown $ONLY_FLAG | tee "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: chainguard-actions/actions-upload-artifact@ef35e1b5b67dfd2cab54a24b06e94357a0e3acb3 # v7.0.1
         if: always()
         with:
           name: rendered-configs
