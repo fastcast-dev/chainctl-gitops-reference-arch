@@ -161,13 +161,17 @@ brings its own auth:
 ### Identity setup (once, by an org owner)
 
 ```sh
-# Example: identity assumable by this GitHub repo's main branch
+# Least-privilege role with only what apply needs
+chainctl iam roles create chainctl-gitops-apply \
+  --parent=<org> \
+  --capabilities=repo.create,repo.update,repo.list,manifest.create,tag.list,apk.list,build_report.list
+
+# Identity assumable by this GitHub repo's main branch, bound to that role
 chainctl iam identities create github chainctl-gitops \
-  --github-repo=acme/chainguard-image-governance \
+  --github-repo=fastcast-dev/chainctl-gitops-reference-arch \
   --github-ref=refs/heads/main \
   --parent=<org> \
-  --role=owner   # or a custom role: repo.create, repo.update, repo.list,
-                 # manifest.create, tag.list, apk.list, build_report.list
+  --role=chainctl-gitops-apply
 ```
 
 Create a second, `viewer`-role identity for PR `plan` runs so untrusted

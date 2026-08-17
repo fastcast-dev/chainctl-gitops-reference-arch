@@ -1,0 +1,19 @@
+# Tier 3 — per-image customization overlay.
+# In-place customization: apk-tester is a sandbox repo, so it is mutated
+# directly (no save-as variant).
+
+image: apk-tester
+
+ticket: JIRA-2102
+approved-by: platform-security
+
+customizations:
+  # Use-case (JIRA-2102): validate package installation through the
+  # governed GitOps flow end to end.
+  packages:
+    - jq
+
+  environment:
+    FASTCAST_MANAGED: "true"
+
+  annotations: {}

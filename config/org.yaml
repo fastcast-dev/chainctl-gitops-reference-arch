@@ -1,7 +1,7 @@
 # Tier 0 — organization-wide settings for the governance tool itself.
 # Changes here are high-blast-radius: gate behind CODEOWNERS review.
 
-org: acme.example.com # Chainguard organization (cgr.dev/<org>)
+org: max.bern # Chainguard organization (cgr.dev/<org>)
 
 defaults:
   # Max concurrent chainctl invocations (chainctl itself caps batch at 10).
@@ -19,6 +19,6 @@ ticket:
 # OCI annotations injected into every customized image for traceability.
 # Keys must NOT use the reserved `dev.chainguard` prefix.
 annotations:
-  ticket-key: com.acme.governance/change-ticket
-  managed-by-key: com.acme.governance/managed-by
+  ticket-key: dev.fastcast.governance/change-ticket
+  managed-by-key: dev.fastcast.governance/managed-by
   managed-by-value: chainctl-gitops

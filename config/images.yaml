@@ -1,5 +1,6 @@
 # Tier 1 — the org's approved image catalog (sweep/phase 1).
-# Each entry becomes `chainctl images repos create <name> --parent <org>`.
+# Each entry becomes `chainctl images repos create <name> --parent <org>`;
+# repos that already exist in the org are adopted as-is (no-op).
 #
 # Governance: adding an image REQUIRES a ticket reference. PRs touching this
 # file must be approved by Chainguard org owners/admins (see CODEOWNERS).
@@ -11,13 +12,14 @@
 #     source: ""             # optional catalog repository ID to sync from
 
 images-enabled:
-  - name: nginx
-    ticket: JIRA-1234
-    description: "Edge proxy — platform team"
+  - name: chainguard-base
+    ticket: JIRA-1001
+    description: "Org base image; tool-enriched variant published via overlay"
 
-  - name: tomcat
-    ticket: CHG0031337
+  - name: apk-tester
+    ticket: JIRA-1002
+    description: "Sandbox repo for validating Custom Assembly changes"
 
-  - name: jdk
-    ticket: https://github.com/acme/platform/issues/42
-    description: "Java base for all JVM services"
+  - name: busybox
+    ticket: JIRA-1003
+    description: "Adopted as-is, no customization"

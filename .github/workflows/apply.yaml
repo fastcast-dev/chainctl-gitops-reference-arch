@@ -49,6 +49,7 @@ jobs:
       - name: drift check (scheduled runs only)
         if: github.event_name == 'schedule'
         run: |
+          set -o pipefail # rc must reflect cg-sync, not tee
           ./bin/cg-sync plan --output markdown | tee "$GITHUB_STEP_SUMMARY"
           # exit 2 (drift) fails the nightly job so it pages/notifies
       - name: apply
@@ -57,6 +58,7 @@ jobs:
           # Untrusted dispatch input: pass via env, expand in-shell only.
           ONLY_IMAGE: ${{ inputs.only }}
         run: |
+          set -o pipefail # rc must reflect cg-sync, not tee
           ONLY_FLAG=""
           [ -n "$ONLY_IMAGE" ] && ONLY_FLAG="--only $ONLY_IMAGE"
           ./bin/cg-sync apply --output markdown $ONLY_FLAG | tee "$GITHUB_STEP_SUMMARY"

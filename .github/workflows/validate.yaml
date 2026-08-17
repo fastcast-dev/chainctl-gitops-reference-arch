@@ -61,7 +61,8 @@ jobs:
       - name: plan
         id: plan
         run: |
-          set +e
+          # pipefail so rc reflects cg-sync, not tee; +e to inspect rc ourselves
+          set -o pipefail +e
           ./bin/cg-sync plan --output markdown | tee plan.md
           rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"

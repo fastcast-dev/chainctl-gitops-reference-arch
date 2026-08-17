@@ -1,0 +1,22 @@
+# Tier 3 — per-image customization overlay.
+# Publishes a tool-enriched VARIANT (save-as) so chainguard-base itself
+# stays pristine; only teams with the approved use-case pull the variant.
+
+image: chainguard-base
+
+# The approved use-case that justifies this customization.
+ticket: JIRA-2101
+approved-by: platform-security
+
+customizations:
+  # Extra packages from Chainguard's APK repository.
+  # Use-case (JIRA-2101): ops debugging — JSON parsing + HTTP probes.
+  packages:
+    - jq
+    - curl
+
+  environment: {}
+  annotations: {}
+
+  # Keep chainguard-base pristine; ship the enriched image as its own repo.
+  save-as: chainguard-base-tools
