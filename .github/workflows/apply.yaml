@@ -29,6 +29,9 @@ concurrency:
 
 jobs:
   apply:
+    # Skips cleanly until CHAINGUARD_IDENTITY is configured (docs/ci-setup.md),
+    # so fresh forks of this reference repo don't produce red runs.
+    if: vars.CHAINGUARD_IDENTITY != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

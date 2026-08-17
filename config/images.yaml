@@ -12,14 +12,10 @@
 #     source: ""             # optional catalog repository ID to sync from
 
 images-enabled:
-  - name: chainguard-base
+  - name: python
     ticket: JIRA-1001
-    description: "Org base image; tool-enriched variant published via overlay"
+    description: "Python base for all services; jq variant via overlay"
 
-  - name: apk-tester
+  - name: nginx
     ticket: JIRA-1002
-    description: "Sandbox repo for validating Custom Assembly changes"
-
-  - name: busybox
-    ticket: JIRA-1003
-    description: "Adopted as-is, no customization"
+    description: "Edge proxy — adopted as-is, no customization"

@@ -36,10 +36,11 @@ jobs:
       - run: ./bin/cg-sync lint
 
   plan:
-    # Set the CHAINGUARD_IDENTITY repo/org variable to the UIDP of an
-    # assumable identity that trusts this repo's OIDC claims (viewer role
-    # is enough for plan). See README "Identity setup".
-    if: vars.CHAINGUARD_IDENTITY != ''
+    # Set the CHAINGUARD_PLAN_IDENTITY repo/org variable to the UIDP of a
+    # READ-ONLY (viewer-role) assumable identity that trusts this repo's PR
+    # OIDC claims. Kept separate from the apply identity so untrusted
+    # branches never hold write capabilities. See docs/ci-setup.md.
+    if: vars.CHAINGUARD_PLAN_IDENTITY != ''
     needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -57,7 +58,7 @@ jobs:
       - run: pip install -r requirements.txt
       - uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
         with:
-          identity: ${{ vars.CHAINGUARD_IDENTITY }}
+          identity: ${{ vars.CHAINGUARD_PLAN_IDENTITY }}
       - name: plan
         id: plan
         run: |

@@ -11,198 +11,204 @@ GitHub Actions, Bitbucket Pipelines, Jenkins, cron, or a laptop.
 
 A team opens a ticket-linked PR against the tiered YAML config. CI lints
 offline and posts a read-only `chainctl --dry-run` plan as a PR comment.
-CODEOWNERS (Chainguard org admins + security) approve — the PR approval *is*
-the change approval. Merge to `main` triggers `apply`, which authenticates
-via OIDC and reconciles in two phases: repo creation, then Custom Assembly
-builds (certs, APK endpoints, packages, ticket annotations). A nightly plan
-run detects drift, e.g. someone editing an image in the Console.
+CODEOWNERS approve — the PR approval *is* the change approval. Merge to
+`main` triggers `apply`: repo creation, then Custom Assembly builds (certs,
+APK endpoints, packages, ticket annotations). A nightly plan run detects
+drift, e.g. someone editing an image in the Console.
 
-The diagram source is [`docs/architecture.d2`](docs/architecture.d2);
-regenerate the SVG with `make diagram` ([D2](https://d2lang.com) required).
+(Diagram source: [`docs/architecture.d2`](docs/architecture.d2); regenerate
+with `make diagram`.)
 
-## Getting started
+## Quick start (10 minutes, laptop only)
 
 Prerequisites: Python 3.10+, [`chainctl`](https://edu.chainguard.dev/chainguard/chainctl-usage/how-to-install-chainctl/),
 and a Chainguard organization you can administer.
 
-1. **Fork or copy this repo** into your own org and clone it.
+```sh
+# 1. Get the code
+git clone <this-repo> && cd chainctl-gitops-reference-arch
+pip install -r requirements.txt          # PyYAML, the only dependency
 
-2. **Install the one dependency** (PyYAML):
+# 2. Point it at YOUR org (edit the CHANGE ME lines)
+$EDITOR config/org.yaml                  # org: <your-org>
 
-   ```sh
-   pip install -r requirements.txt
-   ```
+# 3. List the images your org should have (repos that already exist
+#    in your org are adopted as-is; missing ones get created)
+$EDITOR config/images.yaml
 
-3. **Point it at your org** — edit `config/org.yaml`:
+# 4. See what would change — no writes yet
+chainctl auth login
+./bin/cg-sync lint                       # offline validation
+./bin/cg-sync plan                       # dry-run diff vs your live org
+
+# 5. Make it so
+./bin/cg-sync apply
+```
+
+Exit codes: `0` in sync, `1` error, `2` (plan only) changes pending.
+
+When you're happy with the local loop, wire up CI: **[docs/ci-setup.md](docs/ci-setup.md)**
+walks through the OIDC identities (a write identity for `main`, a read-only
+one for PRs), the exact role capabilities, and fixes for the two auth
+errors you're most likely to hit. Until its two GitHub variables are set,
+the workflows skip cleanly.
+
+## Guide 1 — enable an image for your org
+
+Everything is a PR against one file.
+
+1. Open a change ticket (JIRA / SNOW / GitHub issue).
+2. Add the image to `config/images.yaml`:
 
    ```yaml
-   org: your-org.example.com   # your Chainguard org (cgr.dev/<org>)
+   images-enabled:
+     - name: redis
+       ticket: JIRA-4321
    ```
 
-   Also review the `ticket.pattern` regex (defaults accept JIRA / SNOW /
-   GitHub issue URLs) and the annotation keys, which use an `acme` example
-   prefix you'll want to rename.
+3. Open a PR. CI lints and posts the plan as a PR comment:
+   `redis | repo | will create (ticket: JIRA-4321)`.
+4. CODEOWNERS approve; merge. CI applies and the repo appears at
+   `cgr.dev/<org>/redis`.
 
-4. **Describe your catalog** — put the images your org enables in
-   `config/images.yaml`, your org-wide baseline (internal CA certs, custom
-   APK endpoints) in `config/global.yaml`, and per-image overlays in
-   `config/images/<name>.yaml`. Drop your CA PEMs in `certs/` (the included
-   `acme-root-ca.pem` is a placeholder — replace it).
+Tickets aren't just paperwork: `lint` fails without one, and the ticket is
+baked into the image as an OCI annotation
+(`com.acme.governance/change-ticket`), so any running container traces
+back to its change record.
 
-5. **Try it locally** against your real org (read-only until `apply`):
+## Guide 2 — customize an image (python + jq, the worked example)
 
-   ```sh
-   chainctl auth login          # browser-based login
-   ./bin/cg-sync lint           # offline validation
-   ./bin/cg-sync plan           # dry-run diff vs live org (exit 2 = changes)
-   ./bin/cg-sync apply          # reconcile for real
+This repo ships the example live: [`config/images/python.yaml`](config/images/python.yaml)
+adds `jq` to the `python` image.
+
+1. Make sure the image is enabled (Guide 1) — `python` is in
+   `config/images.yaml`.
+2. Create an overlay named after the image, `config/images/python.yaml`:
+
+   ```yaml
+   image: python
+   ticket: JIRA-2101          # the use-case that justifies it
+   approved-by: platform-security
+
+   customizations:
+     packages:
+       - jq                   # must exist in Chainguard's APK repo
    ```
 
-6. **Wire up CI** — create an assumable identity (see
-   [Identity setup](#identity-setup-once-by-an-org-owner) below) and set its
-   UIDP as the `CHAINGUARD_IDENTITY` repository variable
-   (GitHub → Settings → Secrets and variables → Actions → Variables). The
-   included workflows then run automatically: `validate` on PRs, `apply` on
-   merge to `main` plus a nightly drift check. Update `.github/CODEOWNERS`
-   with your real reviewer teams. Non-GitHub runners live in `examples/ci/`.
+3. PR → plan comment shows the exact package/env/annotation diff → approve
+   → merge → CI runs `chainctl images repos build apply` with the merged
+   config.
 
-   The workflows are hardened: deny-by-default `permissions`, SHA-pinned
-   actions, and [Chainguard Actions](https://edu.chainguard.dev/chainguard/actions/overview/)
-   hardened mirrors (`chainguard-actions/*`) in place of upstream
-   `actions/*`. Chainguard Actions is in beta and gated by an entitlement —
-   enable it once per Chainguard org:
+Options worth knowing:
 
-   ```sh
-   chainctl actions entitlements create --parent <org>
+- **Keep the base pristine** — add `save-as: python-tools` under
+  `customizations:` and the enriched image is published as its own repo
+  (`cgr.dev/<org>/python-tools`) while `python` stays untouched. Use this
+  when only one team has the approved use-case.
+- **Env vars and annotations** — `environment:` and `annotations:` maps
+  merge the same way (`CHAINGUARD_*` env keys and `dev.chainguard*`
+  annotation keys are reserved; `lint` rejects them).
+- The merged config per image is rendered to `rendered/<image>.yaml` and
+  uploaded as a CI artifact, so reviewers see the exact YAML sent to
+  Chainguard.
+
+## Guide 3 — add your internal CA certificates
+
+Gets your corporate CA into the trust bundle of *every* enabled image, so
+in-image tooling can talk to TLS-intercepting proxies and internal services.
+
+> Beta feature — requires enrollment. Ask your Chainguard CS team to enable
+> certificate support for your org first.
+
+1. Drop your PEM files in [`certs/`](certs/) (public keys — safe to commit):
+
+   ```
+   certs/acme-root-ca.pem
+   certs/acme-intermediate.pem
    ```
 
-7. **Make your first change** via PR: add an image to `config/images.yaml`
-   with a `ticket:`, watch the plan comment appear, approve, merge — the
-   repo shows up at `cgr.dev/<org>/<image>`.
+2. Reference them in `config/global.yaml`:
 
-## The three config tiers
+   ```yaml
+   certificates:
+     - certs/acme-root-ca.pem
+     - certs/acme-intermediate.pem
+   ```
+
+3. PR → merge. Every image (minus any in `exclude:`) is rebuilt with the
+   certs via `--with-certificates`. `lint` fails early if a referenced file
+   is missing.
+
+The same file carries the other org-wide baseline: `runtime-repositories:`
+points images' `apk` at your artifact manager (entries **replace** the
+default `virtualapk.cgr.dev` — list every endpoint you need, HTTPS only).
+
+## Guide 4 — wire up CI
+
+Follow **[docs/ci-setup.md](docs/ci-setup.md)**. Summary:
+
+1. Enable the Chainguard Actions entitlement (the workflows use hardened,
+   SHA-pinned action mirrors): `chainctl actions entitlements create --parent <org>`.
+2. Create a least-privilege apply role + identity pinned to `main`, store
+   as the `CHAINGUARD_IDENTITY` repo variable.
+3. Create a read-only (viewer) identity for PR plan runs, store as
+   `CHAINGUARD_PLAN_IDENTITY`.
+4. Put real reviewer teams in `.github/CODEOWNERS`.
+
+The guide includes fixes for the two errors you're most likely to see:
+GitHub's ID-embedded OIDC subjects (`token has invalid subject`) and the
+missing `groups.list` capability (`No folder found`).
+
+## Reference
+
+### The config tiers
 
 | Tier | File | What it governs | chainctl command |
 |---|---|---|---|
 | 0 | `config/org.yaml` | Org name, ticket policy, concurrency, traceability annotations | — |
-| 1 | `config/images.yaml` | **Which catalog images the org enables** (`images-enabled:`) | `chainctl images repos create <name> --parent <org>` |
-| 2 | `config/global.yaml` | **Org-wide Custom Assembly baseline**: internal CA certs, custom APK endpoints (e.g. your JFrog APK remote replacing `virtualapk.cgr.dev`), org-wide packages/env | `chainctl images repos build apply --file ... --with-certificates ...` |
-| 3 | `config/images/<image>.yaml` | **Per-image, per-use-case customizations** (e.g. `jq` on `jdk` for JIRA-2201), optional `save-as:` variants | merged over tier 2, same `build apply` |
+| 1 | `config/images.yaml` | Which images the org enables | `images repos create` |
+| 2 | `config/global.yaml` | Org-wide baseline: CA certs, APK endpoints, org-wide packages | `images repos build apply` |
+| 3 | `config/images/<image>.yaml` | Per-image, per-use-case customizations, optional `save-as:` variants | merged over tier 2, same `build apply` |
 
-Tier 3 overlays are merged on top of tier 2 into a single rendered Custom
-Assembly config per image (written to `rendered/`, uploaded as a CI artifact
-so reviewers can see the exact YAML sent to Chainguard).
-
-## Governance model
-
-- **Every change cites a ticket** (SNOW / JIRA / GitHub issue). `lint` fails
-  if `ticket:` is missing or doesn't match the pattern in `org.yaml`.
-- **Tickets are baked into the images** as OCI annotations
-  (`com.acme.governance/change-ticket`), so a running container is traceable
-  back to its change record.
-- **PR review is the approval gate**: `.github/CODEOWNERS` routes tier 1/2
-  changes to Chainguard org owners/admins and security. On merge, CI applies.
-- **Drift detection**: `plan` exits `2` when live state differs from git
-  (using `chainctl`'s native `--dry-run`); a nightly scheduled run fails on
-  drift, e.g. when someone edited an image in the Console.
-
-## Usage
+### Commands
 
 ```sh
-pip install -r requirements.txt        # PyYAML only
-
 ./bin/cg-sync lint                     # offline: schema, tickets, cert files
 ./bin/cg-sync plan                     # dry-run vs live org (exit 2 = changes)
 ./bin/cg-sync apply                    # reconcile (parallel, non-interactive)
-./bin/cg-sync apply --only jdk         # scope to one image
+./bin/cg-sync apply --only python      # scope to one image
 ./bin/cg-sync report --output markdown # state report, flags unmanaged repos
 ```
 
-Exit codes: `0` in sync / success, `1` error, `2` (plan only) changes pending —
-designed for CI gating.
-
 `apply` runs phase 1 (repo creation) to completion first, then phase 2
-(Custom Assembly builds) — both phases fan out in parallel, bounded by
+(Custom Assembly builds); both fan out in parallel, bounded by
 `defaults.concurrency` in `org.yaml`.
 
-## Adding an image (the everyday flow)
-
-1. Team opens a SNOW/JIRA/GitHub ticket for the request.
-2. PR adds the entry:
-   ```yaml
-   # config/images.yaml
-   - name: redis
-     ticket: JIRA-4321
-   ```
-3. CI lints and posts the plan (`will create (ticket: JIRA-4321)` + the
-   Custom Assembly dry-run diff) as a PR comment.
-4. Chainguard admins approve via CODEOWNERS; merge triggers `apply`.
-5. Repo appears at `cgr.dev/<org>/redis`, already carrying org certs and
-   APK endpoints from `global.yaml`.
-
-Per-use-case customization is the same flow with a
-`config/images/<name>.yaml` overlay; use `save-as:` when only one team
-should get the tool-enriched variant (e.g. `jdk` stays pristine,
-`jdk-tools` gets `jq`).
-
-## Authentication (deliberately out of scope for the tool)
-
-The Python tool assumes an already-authenticated `chainctl`; each runner
-brings its own auth:
-
-| Runner | Mechanism | Where |
-|---|---|---|
-| GitHub Actions | OIDC → `chainguard-dev/setup-chainctl` with an [assumable identity](https://edu.chainguard.dev/chainguard/administration/iam-organizations/assumable-ids/) | `.github/workflows/` |
-| Bitbucket Pipelines | `oidc: true` → `chainctl auth login --identity ... --identity-token` | `examples/ci/bitbucket-pipelines.yml` |
-| Jenkins | OIDC plugin, or credential-file token | `examples/ci/Jenkinsfile` |
-| cron / VM | IdP-minted token or persisted refresh token | `examples/ci/cron.sh` |
-| Workstation | `chainctl auth login` (browser) | — |
-
-### Identity setup (once, by an org owner)
-
-```sh
-# Least-privilege role with only what apply needs
-chainctl iam roles create chainctl-gitops-apply \
-  --parent=<org> \
-  --capabilities=repo.create,repo.update,repo.list,manifest.create,tag.list,apk.list,build_report.list
-
-# Identity assumable by this GitHub repo's main branch, bound to that role
-chainctl iam identities create github chainctl-gitops \
-  --github-repo=fastcast-dev/chainctl-gitops-reference-arch \
-  --github-ref=refs/heads/main \
-  --parent=<org> \
-  --role=chainctl-gitops-apply
-```
-
-Create a second, `viewer`-role identity for PR `plan` runs so untrusted
-branches get read-only access. Store the identity UIDPs as CI variables
-(`CHAINGUARD_IDENTITY`).
-
-## Repo layout
+### Repo layout
 
 ```
 config/
-  org.yaml            tier 0 — org + policy settings
+  org.yaml            tier 0 — org + policy settings (CHANGE ME lines)
   images.yaml         tier 1 — images-enabled list (ticket per image)
   global.yaml         tier 2 — certs, APK runtime repos, org-wide packages
-  images/*.yaml       tier 3 — per-image overlays (ticket per use-case)
+  images/*.yaml       tier 3 — per-image overlays (python + jq example)
 certs/                internal CA PEMs referenced by global.yaml
 scripts/chainguard_sync.py   the tool (stdlib + PyYAML)
 bin/cg-sync           bash entrypoint
-.github/workflows/    GitHub Actions: validate (PR) + apply (merge/nightly)
+.github/workflows/    validate (PR: lint + plan comment) + apply (merge/nightly)
+docs/                 architecture diagram + CI/OIDC setup guide
 examples/ci/          Bitbucket, Jenkins, cron adapters
-rendered/             (gitignored) generated per-image CA configs
+rendered/             (gitignored) generated per-image configs
 ```
 
-## Notes & caveats
+### Notes & caveats
 
-- **Custom Assembly certificates are Beta** and require enrollment — ask
-  your Chainguard Customer Success team.
-- `runtime-repositories` **replace** the default `virtualapk.cgr.dev`
-  entries in `/etc/apk/repositories`; list every endpoint you need, HTTPS only.
+- Custom Assembly **certificates are Beta** and require enrollment.
 - Packages added in overlays must exist in Chainguard's APK repository
   (`chainctl` validates on apply; the PR plan surfaces failures early).
 - `report` flags repos that exist in the org but aren't in `images.yaml` —
-  useful for onboarding this workflow onto an org with pre-existing repos.
-- Environment keys prefixed `CHAINGUARD_` and annotation keys prefixed
-  `dev.chainguard` are reserved and rejected by `lint`.
+  useful when onboarding an org with pre-existing repos.
+- The workflows are hardened: deny-by-default `permissions`, SHA-pinned
+  [Chainguard Actions](https://edu.chainguard.dev/chainguard/actions/overview/)
+  mirrors, no persisted checkout credentials, dispatch inputs passed via
+  env vars, `pipefail` on all piped steps.

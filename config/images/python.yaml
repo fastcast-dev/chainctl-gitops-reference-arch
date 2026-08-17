@@ -1,0 +1,28 @@
+# Tier 3 — per-image customization overlay (the worked example).
+# One file per image, filename must match the image name.
+# Merged ON TOP of config/global.yaml, then applied with
+# `chainctl images repos build apply --repo=<image> --file=<rendered> --yes`.
+
+image: python
+
+# The approved use-case that justifies this customization.
+ticket: JIRA-2101
+approved-by: platform-security
+
+customizations:
+  # Extra packages from Chainguard's APK repository.
+  # Use-case (JIRA-2101): entrypoint scripts parse JSON with jq.
+  packages:
+    - jq
+
+  environment: {}
+  annotations: {}
+
+  # Optional: passthrough of Custom Assembly `accounts` (users/groups/run-as).
+  # accounts:
+  #   run-as: "65532"
+
+  # Optional: publish as a NEW variant repo instead of mutating the base
+  # image — keep `python` pristine and ship `python-tools` to the one team
+  # with the approved use-case.
+  # save-as: python-tools

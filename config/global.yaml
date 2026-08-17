@@ -1,19 +1,24 @@
 # Tier 2 — org-wide Custom Assembly baseline (sweep/phase 2).
 # Applied to EVERY enabled image (minus `exclude`) via
 # `chainctl images repos build apply`.
+#
+# Everything ships EMPTY so a fresh clone applies cleanly; uncomment and
+# adapt the examples as you adopt each feature.
 
 # Internal CA certificates merged into the image trust bundle.
-# Paths are relative to the repo root; passed via --with-certificates.
+# Put PEM files in certs/ (see certs/README.md) and list them here;
+# paths are relative to the repo root; passed via --with-certificates.
 # NOTE: certificates in Custom Assembly is a Beta feature requiring
-# enrollment — contact your Chainguard CS team to enable it, then list
-# your PEMs here (see certs/README.md).
+# enrollment — contact your Chainguard CS team to enable it.
 certificates: []
+#  - certs/acme-root-ca.pem
 
-# Custom APK endpoints (e.g. a JFrog Artifactory APK remote). These
+# Custom APK endpoints (e.g. your JFrog Artifactory APK remote). These
 # REPLACE the default virtualapk.cgr.dev entries in /etc/apk/repositories,
-# so runtime `apk add` pulls through your artifact manager. HTTPS only.
-# Empty = keep Chainguard's default endpoints.
+# so runtime `apk add` pulls through your artifact manager. HTTPS only —
+# list EVERY endpoint you need.
 runtime-repositories: []
+#  - https://acme.jfrog.io/artifactory/api/apk/chainguard-remote
 
 # Org-wide packages/env/annotations baked into every image. Use sparingly —
 # prefer per-image overlays in config/images/.
